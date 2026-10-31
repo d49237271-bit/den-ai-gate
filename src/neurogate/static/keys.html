@@ -33,9 +33,19 @@ h1 em { font-style: normal; color: var(--green); }
 .btn:hover { background: #7dffb2; }
 .btn.ghost { color: var(--green); background: transparent; border: 1px solid var(--green-dim); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
-input { flex: 1 1 260px; min-width: 0; font: 500 15px/1.4 var(--mono); color: var(--ink); background: #030504;
-  border: 1px solid var(--line-2); border-radius: 8px; padding: 12px 14px; }
-input:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.input-wrap { display: flex; flex-wrap: wrap; flex: 1 1 260px; min-width: 0; align-items: stretch; }
+.input-wrap label { flex-basis:100%; font-size:14px; color:var(--muted); margin-bottom:5px; }
+.row { align-items: end; }
+button:disabled { opacity:.55; cursor:wait; }
+:focus-visible { outline:2px solid var(--green); outline-offset:3px; }
+.input-wrap input { flex: 1 1 auto; min-width: 0; font: 500 15px/1.4 var(--mono); color: var(--ink); background: #030504;
+  border: 1px solid var(--line-2); border-radius: 8px 0 0 8px; padding: 12px 14px; }
+.input-wrap input:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.input-wrap .eye { display: inline-flex; align-items: center; justify-content: center; width: 46px; min-height: 46px;
+  background: #030504; border: 1px solid var(--line-2); border-left: none; border-radius: 0 8px 8px 0;
+  color: var(--muted); cursor: pointer; }
+.input-wrap .eye:hover { color: var(--green); background: #060a08; }
+.input-wrap .eye:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; border-radius: 0 8px 8px 0; }
 .msg { margin: 0; font-size: 15px; }
 .msg.ok { color: var(--green); } .msg.bad { color: var(--bad); }
 details { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
@@ -56,36 +66,72 @@ details > .list { display: grid; gap: 12px; padding: 0 12px 12px; }
 </div>
 <script>
 (function () {
-  var esc = function (t) { var d = document.createElement("div"); d.textContent = t == null ? "" : String(t); return d.innerHTML; };
+  var esc = function (t) { var d = document.createElement("div"); d.textContent = t == null ? "" : String(t); return d.innerHTML.replace(/"/g, "&quot;"); };
+  var eyeSvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var eyeSlashSvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  function makeInput(placeholder, id, label) {
+    var safeId = esc(id);
+    var safeLabel = esc(label);
+    var safePlaceholder = esc(placeholder);
+    return '<div class="input-wrap">' +
+      '<label for="' + safeId + '" >' + safeLabel + '</label>' +
+      '<input type="password" id="' + safeId + '" placeholder="' + safePlaceholder + '" autocomplete="off" spellcheck="false" aria-describedby="' + safeId + '-eye">' +
+      '<button type="button" class="eye" id="' + safeId + '-eye" aria-label="Показать ' + safeLabel + '" aria-pressed="false" data-eye-for="' + safeId + '">' + eyeSvg + '</button>' +
+      '</div>';
+  }
   function card(s) {
     var el = document.createElement("article");
     el.className = "card";
     var extra = (s.extra || []).map(function (p, i) {
-      return '<input data-extra="' + i + '" placeholder="' + esc(p) + '" autocomplete="off" spellcheck="false">';
+      return makeInput(p, "extra-" + s.id + "-" + i, p);
     }).join("");
+    var keyId = "key-" + s.id;
     el.innerHTML =
       "<h2>" + esc(s.name) + "</h2>" +
       '<p class="meta">' + esc(s.gives) + (s.needs ? " · нужно: " + esc(s.needs) : "") + "</p>" +
       (s.steps && s.steps.length ? "<ol>" + s.steps.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ol>" : "") +
       '<a class="btn" target="_blank" rel="noopener" href="' + esc(s.key_url) + '">🔑 Получить ключ</a>' +
-      '<div class="row"><input data-key placeholder="Вставь ключ сюда" autocomplete="off" spellcheck="false">' + extra +
-      '<button class="btn ghost" type="button">Подключить</button></div>' +
+      '<div class="row">' + makeInput("Вставь ключ сюда", keyId, "Ключ API") + extra +
+      '<button class="btn ghost" type="button" data-connect>Подключить</button></div>' +
       '<p class="msg" aria-live="polite"></p>';
-    var btn = el.querySelector("button"), msg = el.querySelector(".msg");
-    btn.addEventListener("click", function () {
-      var key = el.querySelector("[data-key]").value.trim();
+    el.querySelector("#" + keyId).setAttribute("data-key", "");
+    el.querySelectorAll("input").forEach(function (input, index) { if (index) input.setAttribute("data-extra", index - 1); });
+    var connectBtn = el.querySelector("[data-connect]"), msg = el.querySelector(".msg");
+    var inputs = Array.prototype.slice.call(el.querySelectorAll("input[type=password]"));
+    var eyes = Array.prototype.slice.call(el.querySelectorAll(".eye"));
+    function remaskAll() {
+      inputs.forEach(function (inp) { inp.type = "password"; });
+      eyes.forEach(function (eye) { eye.innerHTML = eyeSvg; eye.setAttribute("aria-label", "Показать " + (document.getElementById(eye.getAttribute("data-eye-for")).labels[0]?.textContent || "значение")); eye.setAttribute("aria-pressed", "false"); });
+    }
+    eyes.forEach(function (eye) {
+      eye.addEventListener("click", function () {
+        var targetId = eye.getAttribute("data-eye-for");
+        var inp = el.querySelector("#" + targetId);
+        if (!inp) return;
+        var shown = inp.type === "text";
+        inp.type = shown ? "password" : "text";
+        eye.innerHTML = shown ? eyeSvg : eyeSlashSvg;
+        eye.setAttribute("aria-label", shown ? "Показать " + (inp.labels[0]?.textContent || "значение") : "Скрыть " + (inp.labels[0]?.textContent || "значение"));
+        eye.setAttribute("aria-pressed", shown ? "false" : "true");
+      });
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) remaskAll();
+    });
+    connectBtn.addEventListener("click", function () {
+      var key = el.querySelector("#" + keyId).value.trim();
       if (!key) { msg.className = "msg bad"; msg.textContent = "Сначала вставь ключ в поле."; return; }
       var extras = Array.prototype.map.call(el.querySelectorAll("[data-extra]"), function (i) { return i.value.trim(); });
-      btn.disabled = true; msg.className = "msg"; msg.textContent = "Проверяю ключ…";
+      connectBtn.disabled = true; msg.className = "msg"; msg.textContent = "Проверяю ключ…";
       fetch("/keys/add", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: s.id, key: key, extra: extras }) })
         .then(function (r) { return r.json(); })
         .then(function (r) {
           msg.className = "msg " + (r.ok ? "ok" : "bad");
           msg.textContent = (r.ok ? "✅ " : "❌ ") + (r.message || r.detail || "");
-          if (r.ok) { el.classList.add("done"); el.querySelector(".row").remove(); load(true); } else { btn.disabled = false; }
+          if (r.ok) { el.classList.add("done"); el.querySelector(".row").remove(); load(true); } else { connectBtn.disabled = false; }
         })
-        .catch(function () { btn.disabled = false; msg.className = "msg bad"; msg.textContent = "neurogate не отвечает. Запусти его: neurogate restart"; });
+        .catch(function () { connectBtn.disabled = false; msg.className = "msg bad"; msg.textContent = "neurogate не отвечает. Запусти его: neurogate restart"; });
     });
     return el;
   }

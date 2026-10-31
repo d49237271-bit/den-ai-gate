@@ -409,6 +409,11 @@ def create_bot_app() -> FastAPI:
             await tg.http.aclose()
 
     app = FastAPI(title="neurogate keybot", lifespan=lifespan, docs_url=None, redoc_url=None)
+    from neurogate.websetup import setup_router
+    from neurogate.tutorial import router as tutorial_router
+
+    app.include_router(setup_router(store, public_url, lambda s, k: check_key(s, k)))
+    app.include_router(tutorial_router)
 
     @app.get("/health")
     async def health():
@@ -426,7 +431,8 @@ def create_bot_app() -> FastAPI:
         blob = store.take_drop(drop_id) if drop_id.isalnum() and len(drop_id) == 8 else None
         if blob is None:
             raise HTTPException(status_code=404, detail="not found")
-        return {"blob": blob}
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"blob": blob}, headers={"Cache-Control": "no-store"})
 
     @app.post("/tg/{secret}")
     async def webhook(secret: str, request: Request,

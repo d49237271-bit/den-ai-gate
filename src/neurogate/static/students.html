@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>neurogate — пиши код с ИИ бесплатно</title>
-<meta name="description" content="Бесплатный ИИ-программист за 5 минут: без подписки, без карты. Настройка через Telegram-бота.">
+<meta name="description" content="Бесплатный ИИ-программист: настройка в браузере или через Telegram-бота. Один ключ — одна команда — открываешь OpenCode. Без подписки, без карты.">
 <meta name="theme-color" content="#050807">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -76,8 +76,6 @@ code { font: 500 .92em/1.4 var(--f-mono); color: var(--green); background: rgba(
 .hero h1 em { font-style: normal; color: var(--green); text-shadow: 0 0 24px var(--green-glow); }
 .lede { margin: 0; max-width: 60ch; font-size: 18px; color: var(--ink); }
 .lede b { color: var(--green); font-weight: 600; }
-
-}
 
 .term {
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
@@ -206,10 +204,11 @@ footer { font: 400 13px/1.7 var(--f-mono); color: var(--muted); border-top: 1px 
     <p class="prompt-line">~ $ whoami → ученик, который хочет писать код с ИИ</p>
     <h1>Пиши код с ИИ.<br><em>Бесплатно.</em></h1>
     <p class="lede">ИИ сам создаёт файлы и пишет код на твоём компьютере — на <b>бесплатных
-      нейросетях</b>, без подписки и карты. Настройка — 5 минут через Telegram-бота.</p>
+      нейросетях</b>, без подписки и карты. Настройка — в браузере или через Telegram-бота, 5 минут.</p>
     <div class="cta">
-      <a class="btn" href="https://t.me/nurtechneurogatebot" target="_blank" rel="noopener">▶ Начать в боте @nurtechneurogatebot</a>
-      <span>1 ключ · 1 команда · Mac и Windows</span>
+      <a class="btn" href="/start">Настроить в браузере</a>
+      <a class="btn ghost" href="https://t.me/nurtechneurogatebot" target="_blank" rel="noopener">Или через Telegram-бота @nurtechneurogatebot</a>
+      <span>1 ключ · 1 команда · Mac и Windows · <a href="#video" style="color:var(--muted); text-decoration:underline; text-underline-offset:3px;">смотреть видео (6 мин)</a></span>
     </div>
 
     <div class="term" aria-label="Пример работы агента">
@@ -223,23 +222,40 @@ footer { font: 400 13px/1.7 var(--f-mono); color: var(--muted); border-top: 1px 
     </div>
   </header>
 
+  <section id="video" aria-labelledby="video-h">
+    <h2 class="sec-h" id="video-h">Как пользоваться NeuroGate</h2>
+    <div style="width:100%; aspect-ratio:16/9; background:var(--panel); border:1px solid var(--line-2); border-radius:10px; overflow:hidden;">
+      <video controls playsinline preload="none" poster="/media/neurogate-tutorial.jpg" style="width:100%; height:100%; object-fit:cover; background:var(--void);">
+        <source src="/media/neurogate-tutorial.mp4" type="video/mp4">
+        Ваш браузер не поддерживает видео. <a href="/media/neurogate-tutorial.mp4" target="_blank" rel="noopener">Открыть MP4 (43 МБ)</a>
+      </video>
+    </div>
+    <p style="margin:8px 0 0; font:500 14px/1 var(--f-mono); color:var(--muted);">6 минут 47 секунд · от первого ключа до работы с ИИ</p>
+    <p class="note">В видео показана настройка через Telegram. Теперь ту же команду установки можно получить <a href="/start">в браузере</a>.</p>
+    <a href="/media/neurogate-tutorial.mp4">Открыть видео отдельно (43 МБ)</a>
+  </section>
+
   <section id="how" aria-labelledby="how-h">
     <p class="sec-k">// как это работает</p>
     <h2 class="sec-h" id="how-h">Три шага</h2>
     <div class="steps">
       <article class="step">
         <div class="body">
-          <h4>Возьми бесплатный ключ в боте</h4>
-          <p>Бот спросит, Mac у тебя или Windows, и даст кнопку «Получить ключ»: вошёл через Google,
-            скопировал, прислал боту. Карта не нужна.</p>
-          <a class="btn ghost" href="https://t.me/nurtechneurogatebot" target="_blank" rel="noopener">▶ Открыть бота</a>
+          <h4>Получи бесплатный ключ — в браузере или в боте</h4>
+          <p>Нажми «Настроить в браузере» выше — выберешь сервис,
+            войдёшь через Google и получишь ключ. Либо открой Telegram-бота — он тоже даст кнопку
+            «Получить ключ» для твоей ОС (Mac/Windows). Карта не нужна.</p>
+          <div class="btns">
+            <a class="btn" href="/start">Настроить в браузере</a>
+            <a class="btn ghost" href="https://t.me/nurtechneurogatebot" target="_blank" rel="noopener">Или через Telegram-бота</a>
+          </div>
         </div>
       </article>
       <article class="step">
         <div class="body">
-          <h4>Вставь команду из бота</h4>
-          <p>Бот выдаст одну команду и скажет, куда её вставить. Она сама поставит всё нужное,
-            вместе с приложением OpenCode. Жди надпись <b>ACCESS GRANTED</b>.</p>
+          <h4>Запусти одну команду установки</h4>
+          <p>Браузер или бот выдадут одну команду — скопируй и вставь в терминал. Она сама установит
+            всё нужное, включая приложение OpenCode. Жди надпись <b>ACCESS GRANTED</b>.</p>
         </div>
       </article>
       <article class="step">
@@ -259,8 +275,8 @@ footer { font: 400 13px/1.7 var(--f-mono); color: var(--muted); border-top: 1px 
   <section id="pro" aria-labelledby="pro-h">
     <p class="sec-k">// есть подписка?</p>
     <h2 class="sec-h" id="pro-h">Claude или ChatGPT за $20</h2>
-    <p class="sec-lede">Сначала настрой neurogate через бота, потом одна команда в терминале. Твой Claude Code
-      или Codex будет сам думать и проверять, а код поручать бесплатным моделям — лимит подписки
+    <p class="sec-lede">Сначала настрой neurogate — <a href="/start">в браузере</a> или через бота, потом одна команда в терминале.
+      Твой Claude Code или Codex будет сам думать и проверять, а код поручать бесплатным моделям — лимит подписки
       растянется в разы.</p>
     <div class="cmd"><pre id="orch">neurogate connect orchestrator --global</pre><button class="copy" type="button" data-copy="orch">скопировать</button></div>
   </section>
@@ -274,13 +290,13 @@ footer { font: 400 13px/1.7 var(--f-mono); color: var(--muted); border-top: 1px 
       <summary>OpenCode пишет «бесплатный лимит достигнут, подпишитесь на OpenCode Go»</summary>
       <div><p>Выбрана встроенная модель OpenCode, а не neurogate. Её лимиты общие на всех и быстро
         кончаются. Открой список моделей внизу окна и выбери <b>neurogate</b>. Если его нет —
-        пройди бота до конца и вставь команду.</p></div>
+        настрой neurogate заново: <a href="/start">в браузере</a> или через бота, и вставь команду.</p></div>
     </details>
     <details>
       <summary>Кончились лимиты — как добавить ключ?</summary>
       <div><p>OpenCode сам напишет «Бесплатные лимиты кончились» и даст ссылку. Открой её: там кнопка
         «Получить ключ» и поле, куда его вставить. Ключ заработает сразу, терминал не нужен.
-        Открыть эту страницу и заранее — набери <code>neurogate add</code>.</p></div>
+        Открыть эту страницу и заранее — набери <code>neurogate add</code> — она работает на твоём компьютере.</p></div>
     </details>
     <details>
       <summary>«command not found: neurogate» или «не является командой»</summary>
@@ -295,9 +311,10 @@ footer { font: 400 13px/1.7 var(--f-mono); color: var(--muted); border-top: 1px 
       <div>
         <p>Компании дают бесплатный доступ к нейросетям, чтобы их пробовали. У каждой дневной лимит —
           neurogate держит связку из нескольких и переключается между ними.</p>
-        <p>Ключи живут только на твоём компьютере. Бот удаляет сообщение с ключом сразу и стирает
-          ключи у себя, как только установщик их заберёт.</p>
-        <p class="warn">Никому не пересылай ключи и команду из бота.</p>
+        <p>После установки ключи хранятся на твоём компьютере. Сайт и бот передают их установщику
+          в зашифрованном одноразовом пакете, который удаляется после получения или через 24 часа.
+          Бот также удаляет сообщение с ключом.</p>
+        <p class="warn">Никому не пересылай ключи и команду установки.</p>
       </div>
     </details>
   </section>
