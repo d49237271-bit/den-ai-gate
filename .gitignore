@@ -44,3 +44,5 @@ tests/private/
 
 # scratch: временная установка ruamel для правки config.yaml (не должна попадать в репо/на прод)
 pylibs/
+.config.sha256
+config.yaml.new

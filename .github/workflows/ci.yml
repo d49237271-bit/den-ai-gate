@@ -1,10 +1,11 @@
 name: ci
 
 on:
+  workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, stable]
   push:
-    branches: [main]
+    branches: [main, stable]
 
 jobs:
   check:
@@ -15,7 +16,17 @@ jobs:
         with:
           enable-cache: true
       - name: Sync deps
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
+      - name: Install Claude Code for worker boundary tests
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Gateway tests
+        run: uv run pytest -q
+      - name: Bot tests
+        working-directory: bot
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python -r requirements-dev.txt
+          .venv/bin/python -m pytest -q
       - name: Smoke-load config.yaml.example
         run: |
           uv run python -c "import yaml; yaml.safe_load(open('config.yaml.example'))"

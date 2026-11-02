@@ -1,0 +1,22 @@
+[Unit]
+Description=Den.AI gate Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/den-ai-gate/bot
+EnvironmentFile=/opt/den-ai-gate/bot/.env
+ExecStart=/opt/den-ai-gate/bot/.venv/bin/python main.py
+Restart=always
+RestartSec=5
+# Отдельный пользователь без прав: боту нужна только своя база
+DynamicUser=yes
+StateDirectory=den-ai-gate-bot
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+MemoryMax=150M
+
+[Install]
+WantedBy=multi-user.target

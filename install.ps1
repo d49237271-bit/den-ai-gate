@@ -1,9 +1,10 @@
-# Установка neurogate одной командой (Windows, PowerShell):
-#   irm https://raw.githubusercontent.com/NurTechKSA/neurogate/main/install.ps1 | iex
+# Шлюз Ден.AI, установка одной командой (Windows, PowerShell):
+#   irm https://raw.githubusercontent.com/d49237271-bit/den-ai-gate/stable/install.ps1 | iex
 #
 # Что делает: ставит uv, качает neurogate в %USERPROFILE%\neurogate, ставит зависимости,
 # запускает мастер ключей, включает автозапуск при входе в Windows и подключает Claude Code.
-# Повторный запуск безопасен — обновит код и ничего не сотрёт.
+# Ключи вводятся только в этом окне и остаются в %USERPROFILE%\neurogate\.env.
+# Повторный запуск безопасен: обновит код и список моделей, ключи не тронет.
 #
 # Весь скрипт — в блоке & { }: под `irm | iex` иначе $ErrorActionPreference и функции оставались
 # бы в окне ученика после установки.
@@ -12,7 +13,8 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:PYTHONUTF8 = "1"
 
-$Repo = if ($env:NEUROGATE_REPO) { $env:NEUROGATE_REPO } else { "https://github.com/NurTechKSA/neurogate" }
+$Repo = if ($env:NEUROGATE_REPO) { $env:NEUROGATE_REPO } else { "https://github.com/d49237271-bit/den-ai-gate" }
+$Branch = if ($env:NEUROGATE_BRANCH) { $env:NEUROGATE_BRANCH } else { "stable" }
 $Dir  = if ($env:NEUROGATE_DIR)  { $env:NEUROGATE_DIR }  else { Join-Path $HOME "neurogate" }
 $Port = if ($env:NEUROGATE_PORT) { $env:NEUROGATE_PORT } else { "8765" }
 $Bin  = Join-Path $HOME ".local\bin"
@@ -35,10 +37,10 @@ Say "2/6 Код neurogate -> $Dir"
 if (Test-Path (Join-Path $Dir ".git")) {
     git -C $Dir pull --ff-only
 } elseif (Get-Command git -ErrorAction SilentlyContinue) {
-    git clone --depth 1 "$Repo.git" $Dir
+    git clone --depth 1 --branch $Branch "$Repo.git" $Dir
 } else {
     $zip = Join-Path $env:TEMP "neurogate.zip"
-    Invoke-WebRequest "$Repo/archive/refs/heads/main.zip" -OutFile $zip -UseBasicParsing
+    Invoke-WebRequest "$Repo/archive/refs/heads/$Branch.zip" -OutFile $zip -UseBasicParsing
     $tmp = Join-Path $env:TEMP "neurogate-src"
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
     Expand-Archive $zip $tmp
@@ -68,7 +70,7 @@ Say "3/6 Зависимости"
 & $Uv sync --frozen
 if ($LASTEXITCODE -ne 0) { throw "Не установились зависимости (uv sync). Закройте программы neurogate и запустите команду ещё раз." }
 if (-not (Test-Path ".env")) { Copy-Item ".env.example" ".env" }
-if (-not (Test-Path "config.yaml")) { Copy-Item "config.yaml.example" "config.yaml" }
+& $Uv run neurogate refresh-config
 
 # Порт занят чужой программой (не нашим прошлым запуском) — берём следующий свободный.
 function PortBusy($p) { [bool](Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue) }
@@ -85,10 +87,8 @@ else { $envText += "`nNEUROGATE_PORT=$Port`n" }
 [IO.File]::WriteAllText($envPath, $envText, (New-Object Text.UTF8Encoding $false))
 $env:NEUROGATE_PORT = $Port
 
-if ($env:NEUROGATE_CODE) {
-    Say "4/6 Ключи из Telegram-бота"
-    & $Uv run neurogate import $env:NEUROGATE_CODE --no-restart
-    if ($LASTEXITCODE -ne 0) { Write-Host "Ключи по коду не забрались. Можно ввести их вручную: neurogate setup" }
+if (Select-String -Path ".env" -Pattern '^[A-Z0-9_]+_(API_KEY|TOKEN|AUTH_KEY)=.+' -Quiet) {
+    Say "4/6 Ключи уже есть — мастер пропускаю (добавить ещё: neurogate add)"
 } else {
     Say "4/6 Ключи нейросетей (можно пропускать и вернуться позже: neurogate setup)"
     if ([Console]::IsInputRedirected) {
@@ -148,23 +148,6 @@ else {
     Write-Host "Пришлите этот вывод или запустите: neurogate doctor"
 }
 
-# OpenCode ставим сами и без вопросов (/S) — ученику не надо ничего скачивать и запускать.
-$ocPaths = @("$env:LOCALAPPDATA\Programs\OpenCode\OpenCode.exe", "$env:ProgramFiles\OpenCode\OpenCode.exe")
-if (-not ($ocPaths | Where-Object { Test-Path $_ })) {
-    Say "Приложение OpenCode (~260 МБ, 1–3 минуты)"
-    $ocArch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "windows-aarch64-nsis" } else { "windows-x64-nsis" }
-    $ocUrl = "https://opencode.ai/download/stable/$ocArch"
-    $ocExe = Join-Path $env:TEMP "OpenCode-Setup.exe"
-    try {
-        Invoke-WebRequest -UseBasicParsing $ocUrl -OutFile $ocExe
-        Start-Process $ocExe -ArgumentList "/S" -Wait
-        if ($ocPaths | Where-Object { Test-Path $_ }) { Write-Host "OpenCode установлен." }
-        else { Write-Host "Открываю установщик OpenCode — нажмите «Установить»."; Start-Process $ocExe }
-    } catch {
-        Write-Host "OpenCode не скачался — скачайте сами: $ocUrl"
-    }
-}
-
 Say "6/6 Подключение программ"
 # .cmd читается в кодировке консоли — кириллицу из имени пользователя заменяем на %USERPROFILE%.
 function CmdPath($p) { if ($p.StartsWith($HOME, [StringComparison]::OrdinalIgnoreCase)) { "%USERPROFILE%" + $p.Substring($HOME.Length) } else { $p } }
@@ -183,9 +166,9 @@ if exist "$cmdDir\.venv\Scripts\neurogate.exe" ("$cmdDir\.venv\Scripts\neurogate
 $shDir = if ($Dir.StartsWith($HOME, [StringComparison]::OrdinalIgnoreCase)) { '$USERPROFILE' + $Dir.Substring($HOME.Length).Replace('\', '/') } else { $Dir.Replace('\', '/') }
 $sh = "#!/bin/sh`nexport PYTHONUTF8=1`nNEUROGATE_CALLER_DIR=`"`$(pwd -W 2>/dev/null || pwd)`"`nexport NEUROGATE_CALLER_DIR`ncd `"$shDir`" || exit 1`n[ -x ./.venv/Scripts/neurogate.exe ] || exec uv run neurogate `"`$@`"`nexec ./.venv/Scripts/neurogate.exe `"`$@`"`n"
 [IO.File]::WriteAllText((Join-Path $Bin "neurogate"), $sh, (New-Object Text.UTF8Encoding $false))
-& $Uv run neurogate connect opencode
 & $Uv run neurogate connect claude-code
-& $Uv run neurogate connect codex
+& $Uv run neurogate connect claude-skill
+if (Get-Command codex -ErrorAction SilentlyContinue) { & $Uv run neurogate connect codex }
 if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
     Write-Host "Claude Code не найден. Поставить: irm https://claude.ai/install.ps1 | iex"
 }
@@ -196,23 +179,29 @@ if ($userPath -notlike "*$Bin*") {
     Write-Host "Папка $Bin добавлена в PATH — откройте новое окно терминала."
 }
 
+# Итог по факту: надпись обещает рабочий шлюз, поэтому без ответа сервера её не показываем
+$status = if ($ok) { "ACCESS GRANTED. Шлюз работает." } else { "Установка закончена, но шлюз пока не отвечает. Проверь: neurogate doctor" }
+if (-not (Select-String -Path ".env" -Pattern '^[A-Z0-9_]+_(API_KEY|TOKEN|AUTH_KEY)=.+' -Quiet)) {
+    $status += "`n  Ключа пока нет, модели не ответят. Добавь его: neurogate add"
+}
+
 Write-Host @"
 
-ACCESS GRANTED. Всё бесплатно, подписки не нужны.
+$status
 
-  * Откройте приложение OpenCode. Один раз подключите neurogate:
-     список моделей -> «+» -> neurogate (бесплатно) -> вставьте ключ выше. Пишите задачу.
-  Панель и тестовый чат:   http://127.0.0.1:$Port/dashboard
-  Claude Code в терминале: claude-free
-  Codex бесплатно:         codex-free
-  Добавить ещё ключи:      http://127.0.0.1:$Port/keys   (или: neurogate add)
-  Проверить ключи:         neurogate keys
-  VS Code (Cline и др.):   neurogate connect cline   (или continue, cursor)
-  Перезапустить сервер:    neurogate restart   (setup делает это сам)
-  Что-то не так?           neurogate doctor
-  Инструкция:              https://neurogate.nurtech.dev
+  Поручить код бесплатной модели:  /free <задача>   (в Claude Code)
+  Кончился лимит Claude:           claude-free      (внутри бесплатные модели, не Claude)
+  Добавить ключи:                  neurogate add
+  Проверить систему:               neurogate doctor
+  Обновить модели:                 neurogate update
+  Панель:                          http://127.0.0.1:$Port/dashboard
 
-  Автор neurogate — Мансур, Basalt Code: канал t.me/snglrai, связь @abu_js. Спасибо!
+  Бесплатные сервисы могут использовать запросы для обучения.
+  Чужой код, ключи и персональные данные туда не отправляй.
+
+  Шлюз основан на neurogate. Автор: Мансур, Basalt Code, канал t.me/snglrai.
+  Установщик и страницу ключей сделала команда NurTech.
+
 "@
 Pop-Location
 }

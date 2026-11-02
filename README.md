@@ -1,3 +1,10 @@
+# Шлюз Ден.AI
+
+> Форк [neurogate](https://github.com/basaltcode/neurogate) для тех, кто работает в Claude Code.
+> Claude планирует и проверяет, код пишут бесплатные модели. Инструкция: [docs/den-ai.md](docs/den-ai.md).
+> Автор neurogate: Мансур, Basalt Code, канал [SINGULAR](https://t.me/snglrai). Установщик и страницу ключей
+> сделала команда NurTech. Ниже оригинальная документация.
+
 # neurogate
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

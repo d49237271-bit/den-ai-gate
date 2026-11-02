@@ -1,0 +1,55 @@
+name: sync-upstream
+
+# Список бесплатных моделей меняется каждую неделю, его ведут NurTech и Basalt Code.
+# Два раза в неделю забираем их изменения в отдельную ветку и открываем PR в main.
+# Подписчикам обновление дойдёт только после ручного переноса main в stable.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Merge upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "sync-bot"
+          git config user.email "sync-bot@users.noreply.github.com"
+          git remote add upstream https://github.com/NurTechKSA/neurogate.git
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Новых коммитов нет"
+            exit 0
+          fi
+          git checkout -B sync/upstream
+          if git merge --no-edit upstream/main; then
+            git push --force origin sync/upstream
+            if [ "$(gh pr list --head sync/upstream --state open --json number --jq length)" = "0" ]; then
+              gh pr create --base main --head sync/upstream \
+                --title "Обновление из NurTech" \
+                --body "Изменения из NurTechKSA/neurogate. Дождись зелёных тестов, влей в main, затем перенеси в stable."
+            fi
+            # Коммиты от GITHUB_TOKEN не запускают CI сами, поэтому запускаем явно
+            gh workflow run ci.yml --ref sync/upstream
+          else
+            git merge --abort
+            title="Конфликт при обновлении из NurTech"
+            if [ "$(gh issue list --state open --search "$title in:title" --json number --jq length)" = "0" ]; then
+              gh issue create --title "$title" \
+                --body "Автослияние с NurTechKSA/neurogate не прошло. Нужно объединить ветки вручную."
+            fi
+          fi

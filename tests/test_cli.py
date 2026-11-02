@@ -368,10 +368,10 @@ def test_delegate_uses_opencode_in_caller_dir(home, tmp_path, monkeypatch):
         stdout = ""
 
     monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: calls.append((cmd, kw)) or R())
-    assert cli.main(["delegate", "сделай", "тесты"]) == 0
+    assert cli.main(["delegate", "--worker", "opencode", "сделай", "тесты"]) == 0
     cmd, kw = calls[0]
     assert cmd[:4] == ["/bin/opencode", "run", "-m", "neurogate/code"]
-    assert cmd[4].endswith("Задача:\nсделай тесты")
+    assert cmd[4].endswith("Task:\nсделай тесты")
     assert kw["cwd"] == proj and kw["env"]["PWD"] == str(proj)
     assert "ANTHROPIC_API_KEY" not in kw["env"]
 

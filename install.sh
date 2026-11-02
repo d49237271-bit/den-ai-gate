@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Установка neurogate одной командой (macOS / Linux):
-#   curl -fsSL https://raw.githubusercontent.com/NurTechKSA/neurogate/main/install.sh | bash
-# С ключами из Telegram-бота: ... | NEUROGATE_CODE=NG-xxxx bash  (команду целиком выдаёт бот)
+# Шлюз Ден.AI, установка одной командой (macOS / Linux):
+#   curl -fsSL https://raw.githubusercontent.com/d49237271-bit/den-ai-gate/stable/install.sh | bash
 #
 # NEUROGATE_NO_AUTOSTART=1 — не ставить автозапуск (сервер, тесты, «запущу сам»).
 #
 # Что делает: ставит uv, качает neurogate в ~/neurogate, ставит зависимости,
-# запускает мастер ключей, включает автозапуск сервера и подключает OpenCode и Claude Code.
-# Повторный запуск безопасен — обновит код и ничего не сотрёт.
+# запускает мастер ключей, включает автозапуск сервера и подключает Claude Code.
+# Ключи вводятся только в этом терминале и остаются в ~/neurogate/.env.
+# Повторный запуск безопасен: обновит код и список моделей, ключи не тронет.
 set -euo pipefail
 
-REPO="${NEUROGATE_REPO:-https://github.com/NurTechKSA/neurogate.git}"
+REPO="${NEUROGATE_REPO:-https://github.com/d49237271-bit/den-ai-gate.git}"
+BRANCH="${NEUROGATE_BRANCH:-stable}"
 DIR="${NEUROGATE_DIR:-$HOME/neurogate}"
 PORT="${NEUROGATE_PORT:-8765}"
 
@@ -22,7 +23,7 @@ cat <<'BANNER'
   ██║╚██╗██║██╔══╝  ██║   ██║██╔══██╗██║   ██║██║   ██║██╔══██║   ██║   ██╔══╝
   ██║ ╚████║███████╗╚██████╔╝██║  ██║╚██████╔╝╚██████╔╝██║  ██║   ██║   ███████╗
   ╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
-  > access: free · 50 нейросетей · 0 ₽                     neurogate.nurtech.dev
+  > Шлюз Ден.AI: бесплатные модели для Claude Code
 BANNER
 
 say() { printf '\n\033[1;36m▶ %s\033[0m\n' "$*"; }
@@ -41,17 +42,17 @@ say "2/6 Код neurogate → $DIR"
 if [ -d "$DIR/.git" ]; then
   git -C "$DIR" pull --ff-only || echo "Не удалось обновить — работаю с текущей версией."
 elif command -v git >/dev/null 2>&1; then
-  git clone --depth 1 "$REPO" "$DIR"
+  git clone --depth 1 --branch "$BRANCH" "$REPO" "$DIR"
 else
   mkdir -p "$DIR"
-  curl -fsSL "${REPO%.git}/archive/refs/heads/main.tar.gz" | tar -xz --strip-components=1 -C "$DIR"
+  curl -fsSL "${REPO%.git}/archive/refs/heads/$BRANCH.tar.gz" | tar -xz --strip-components=1 -C "$DIR"
 fi
 cd "$DIR"
 
 say "3/6 Зависимости"
 "$UV" sync --frozen
 [ -f .env ] || cp .env.example .env
-[ -f config.yaml ] || cp config.yaml.example config.yaml
+"$UV" run neurogate refresh-config
 chmod 600 .env
 
 # Порт занят чужой программой (не нашим прошлым запуском) — берём следующий свободный.
@@ -68,12 +69,7 @@ else
 fi
 export NEUROGATE_PORT="$PORT"
 
-if [ -n "${NEUROGATE_CODE:-}" ]; then
-  say "4/6 Ключи из Telegram-бота"
-  "$UV" run neurogate import "$NEUROGATE_CODE" --no-restart || {
-    echo "Ключи по коду не забрались. Можно ввести их вручную: neurogate setup"
-  }
-elif [ "$(grep -cE '^[A-Z0-9_]+_(API_KEY|TOKEN|AUTH_KEY)=.+' .env 2>/dev/null)" -gt 0 ]; then
+if [ "$(grep -cE '^[A-Z0-9_]+_(API_KEY|TOKEN|AUTH_KEY)=.+' .env 2>/dev/null)" -gt 0 ]; then
   say "4/6 Ключи уже есть — мастер пропускаю (добавить ещё: neurogate setup)"
 else
   say "4/6 Ключи нейросетей (можно пропускать и вернуться позже: neurogate setup)"
@@ -144,28 +140,11 @@ if [ -z "${NEUROGATE_NO_AUTOSTART:-}" ]; then
   fi
 fi
 
-# OpenCode ставим до подключения: `connect opencode` входит в провайдер через CLI самого
-# приложения — без него neurogate не появится в окне. Ученику ничего не надо скачивать руками.
-if [ "$(uname)" = "Darwin" ] && [ ! -d /Applications/OpenCode.app ] && [ ! -d "$HOME/Applications/OpenCode.app" ]; then
-  say "Приложение OpenCode (~300 МБ)"
-  case "$(uname -m)" in arm64) OC_ARCH=darwin-aarch64-dmg ;; *) OC_ARCH=darwin-x64-dmg ;; esac
-  OC_TMP="$(mktemp -d)"
-  if curl -fL --progress-bar -o "$OC_TMP/OpenCode.dmg" "https://opencode.ai/download/stable/$OC_ARCH" \
-     && mkdir -p "$OC_TMP/mnt" \
-     && hdiutil attach -nobrowse -readonly -quiet -mountpoint "$OC_TMP/mnt" "$OC_TMP/OpenCode.dmg" \
-     && cp -R "$OC_TMP/mnt/OpenCode.app" /Applications/; then
-    echo "OpenCode установлен в «Программы»."
-  else
-    echo "OpenCode не поставился сам — скачайте: https://opencode.ai/download/stable/$OC_ARCH"
-  fi
-  hdiutil detach -quiet "$OC_TMP/mnt" 2>/dev/null || true
-  rm -rf "$OC_TMP"
-fi
-
 say "6/6 Подключение программ"
 # Короткая команда `neurogate` из любой папки — до подключения программ, чтобы их сбой не
 # оставил без команды. Сразу из .venv, без `uv run`: в песочнице Codex uv падает — ему
 # некуда писать кэш (~/.cache/uv).
+mkdir -p "$HOME/.local/bin"  # uv мог стоять из Homebrew, тогда этой папки ещё нет
 cat > "$HOME/.local/bin/neurogate" <<EOF
 #!/bin/sh
 NEUROGATE_CALLER_DIR="\$PWD" && export NEUROGATE_CALLER_DIR && cd "$DIR" || exit 1
@@ -175,9 +154,11 @@ EOF
 chmod +x "$HOME/.local/bin/neurogate"
 
 # Сбой одной программы не прерывает установку (set -e) — остальные подключаются.
-"$UV" run neurogate connect opencode || echo "OpenCode не подключился — позже: neurogate connect opencode"
 "$UV" run neurogate connect claude-code || echo "Claude Code не подключился — позже: neurogate connect claude-code"
-"$UV" run neurogate connect codex || echo "Codex не подключился — позже: neurogate connect codex"
+"$UV" run neurogate connect claude-skill || echo "Скилл /free не поставился — позже: neurogate connect claude-skill"
+if command -v codex >/dev/null 2>&1; then
+  "$UV" run neurogate connect codex || echo "Codex не подключился — позже: neurogate connect codex"
+fi
 if ! command -v claude >/dev/null 2>&1; then
   echo "Claude Code не найден. Поставить: curl -fsSL https://claude.ai/install.sh | bash"
 fi
@@ -193,22 +174,33 @@ if ! grep -qs '\.local/bin' "$RC"; then
   NEW_PATH=1
 fi
 
+# Итог по факту: надпись обещает рабочий шлюз, поэтому без ответа сервера её не показываем
+if curl -fs "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then
+  STATUS="🔓 ACCESS GRANTED. Шлюз работает."
+else
+  STATUS="⚠ Установка закончена, но шлюз пока не отвечает. Проверь: neurogate doctor"
+fi
+if [ "$(grep -cE '^[A-Z0-9_]+_(API_KEY|TOKEN|AUTH_KEY)=.+' .env 2>/dev/null)" -eq 0 ]; then
+  STATUS="$STATUS
+  Ключа пока нет, модели не ответят. Добавь его: neurogate add"
+fi
+
 cat <<EOF
 
-🔓 ACCESS GRANTED. Всё бесплатно, подписки не нужны.
+$STATUS
 
-  ⭐ Откройте приложение OpenCode и пишите задачу — модель «neurogate» уже выбрана.
-  Claude Code в терминале: claude-free
-  Codex бесплатно:         codex-free
-  Панель и тестовый чат:   http://127.0.0.1:$PORT/dashboard
-  Добавить ещё ключи:      http://127.0.0.1:$PORT/keys   (или: neurogate add)
-  Проверить ключи:         neurogate keys
-  VS Code (Cline и др.):   neurogate connect cline   (или continue, cursor)
-  Перезапустить сервер:    neurogate restart   (setup делает это сам)
-  Что-то не так?           neurogate doctor
-  Инструкция:              https://neurogate.nurtech.dev
+  Поручить код бесплатной модели:  /free <задача>   (в Claude Code)
+  Кончился лимит Claude:           claude-free      (внутри бесплатные модели, не Claude)
+  Добавить ключи:                  neurogate add
+  Проверить систему:               neurogate doctor
+  Обновить модели:                 neurogate update
+  Панель:                          http://127.0.0.1:$PORT/dashboard
 
-  Автор neurogate — Мансур, Basalt Code: канал t.me/snglrai, связь @abu_js. Спасибо!
+  ⚠ Бесплатные сервисы могут использовать запросы для обучения.
+    Чужой код, ключи и персональные данные туда не отправляй.
+
+  Шлюз основан на neurogate. Автор: Мансур, Basalt Code, канал t.me/snglrai.
+  Установщик и страницу ключей сделала команда NurTech.
 EOF
 if [ -n "${NEW_PATH:-}" ]; then
   echo

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import hashlib
 import json
 import os
 import platform
@@ -74,6 +75,9 @@ def check_key(service: dict, key: str) -> tuple[bool | None, str]:
         r = httpx.get(url, headers=headers, params=params, timeout=15)
     except httpx.HTTPError as exc:
         return None, f"сервис не ответил ({type(exc).__name__})"
+    # Gemini из России и Беларуси отвечает 400 и на рабочий ключ: дело в стране, а не в ключе
+    if "location is not supported" in (r.text or "").lower():
+        return None, "сервис закрыт для вашей страны: ключ сохранён, включите VPN"
     if r.status_code in (400, 401, 403):
         return False, f"сервис отверг ключ (HTTP {r.status_code})"
     if 200 <= r.status_code < 300:
@@ -311,12 +315,20 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         except (httpx.HTTPError, ValueError) as exc:
             line(False, f"Запрос к модели упал ({type(exc).__name__})", "neurogate restart")
 
+    if shutil.which("claude"):
+        line(True, "Claude Code найден")
+    else:
+        line(False, "Claude Code не найден: /free и claude-free работают через него",
+             "установи Claude Code: https://code.claude.com/docs/en/quickstart")
+
     oc = Path.home() / ".config" / "opencode" / "opencode.json"
     try:
         cfg = json.loads(oc.read_text(encoding="utf-8")) if oc.exists() else {}
     except ValueError:
         cfg = None
-    if cfg is None:
+    if not oc.exists():
+        pass  # OpenCode необязателен: исполнитель по умолчанию — Claude Code
+    elif cfg is None:
         line(None, f"Настройки OpenCode не читаются ({oc})", "neurogate connect opencode")
     else:
         url = ((cfg.get("providers") or {}).get("neurogate") or {}).get("settings", {}).get("baseURL")
@@ -346,6 +358,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
              "" if ok else "neurogate connect claude-code")
     if str(_bin_dir()) not in os.environ.get("PATH", ""):
         line(None, f"{_bin_dir()} нет в PATH текущего окна", "открой новое окно терминала")
+    if (Path.home() / ".claude" / "skills" / "free" / "SKILL.md").exists():
+        line(True, "Скилл /free установлен")
+    else:
+        line(None, "Скилл /free не установлен", "neurogate connect claude-skill")
 
     print()
     if problems:
@@ -360,6 +376,52 @@ def cmd_restart(args: argparse.Namespace) -> int:
         return 0
     print("Служба neurogate не найдена. Запустите сервер вручную: neurogate serve")
     return 1
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def cmd_refresh_config(args: argparse.Namespace) -> int:
+    """Новый список моделей в config.yaml. Файл создаётся при первой установке, а модели меняются
+    каждую неделю: без этой команды старые установки застревали на устаревшем списке.
+    Правки человека (редактор цепочек в панели) не затираем: кладём новый список рядом."""
+    example, target, stamp = Path("config.yaml.example"), Path("config.yaml"), Path(".config.sha256")
+    fresh = _sha256(example)
+    if not target.exists():
+        shutil.copyfile(example, target)
+        stamp.write_text(fresh, encoding="utf-8")
+        return 0
+    current = _sha256(target)
+    if current == fresh:
+        stamp.write_text(fresh, encoding="utf-8")
+        return 0
+    untouched = stamp.exists() and stamp.read_text(encoding="utf-8").strip() == current
+    if untouched:
+        shutil.copyfile(example, target)
+        stamp.write_text(fresh, encoding="utf-8")
+        print("Список моделей обновлён.")
+    else:
+        shutil.copyfile(example, Path("config.yaml.new"))
+        print("Вы меняли config.yaml, поэтому я его не трогаю. Новый список моделей: config.yaml.new")
+    return 0
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    """Обновление — это повторный запуск установщика: код, зависимости и список моделей.
+    Ключи остаются. На Windows запущенный neurogate.exe нельзя заменить, поэтому установщик
+    стартует в отдельном окне, а эта команда сразу завершается."""
+    # Обёртка `neurogate` уже перешла в папку установки, поэтому пути от текущей папки
+    if os.name == "nt":
+        # Не -File: PowerShell 5.1 прочитал бы файл без BOM как ANSI, и байт 0x94 из «—» стал бы кавычкой
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+             "Get-Content -Raw -Encoding UTF8 .\\install.ps1 | Invoke-Expression"],
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0), close_fds=True,
+        )
+        print("Обновление идёт в новом окне PowerShell.")
+        return 0
+    return subprocess.run(["bash", str(Path.cwd() / "install.sh")], check=False).returncode
 
 
 def catalog_markdown(catalog: dict) -> str:
@@ -754,6 +816,10 @@ def cmd_connect(args: argparse.Namespace) -> int:
     tool = args.tool
     if tool == "claude-code":
         _connect_claude_code(base, token)
+    elif tool == "claude-skill":
+        path = _write_claude_skill()
+        print(f"Скилл установлен: {path}")
+        print("В Claude Code: /free <задача>. Перезапустите открытые окна Claude Code.")
     elif tool == "orchestrator":
         targets = ([Path.home() / ".codex" / "AGENTS.md", Path.home() / ".claude" / "CLAUDE.md"]
                    if args.global_ else [_caller_dir() / "AGENTS.md", _caller_dir() / "CLAUDE.md"])
@@ -855,12 +921,85 @@ def _write_orchestrator(path: Path) -> str:
     return "дописано" if text else "создан"
 
 
+CLAUDE_SKILL = """---
+name: free
+description: Поручить код бесплатным моделям через neurogate, а самому спланировать работу и проверить результат. Запускается только вручную.
+argument-hint: "<задача>"
+disable-model-invocation: true
+allowed-tools: Bash(neurogate delegate *) Bash(neurogate ask *) Bash(neurogate doctor) Bash(git status *) Bash(git diff *) Bash(rm -f .neurogate-task.md)
+---
+
+# Бесплатный исполнитель
+
+Задача: $ARGUMENTS
+
+Ты планируешь и проверяешь. Код пишет бесплатная модель через `neurogate delegate`, поэтому
+объёмная работа идёт мимо лимита подписки. Исполнитель не видит этот разговор и не может
+запускать команды: он только правит файлы в текущей папке.
+
+## Порядок
+
+1. Папка не в git — спроси, можно ли выполнить `git init` и сделать первый коммит: без этого
+   правки исполнителя не проверить и не откатить.
+2. Прочитай только то, без чего нельзя поставить задачу. Раздели работу на шаги по 1–3 файла.
+3. На каждый шаг запиши в `.neurogate-task.md`: какие файлы менять, что сделать, какие
+   ограничения есть, что считается готовым. Напиши всё нужное: другого контекста у исполнителя нет.
+4. Выполни `neurogate delegate --file .neurogate-task.md` с таймаутом 600000 мс.
+5. Проверь отчёт: посмотри `git diff`, запусти тесты или код.
+6. Плохо — поручи исправление: что сломано, где, как надо. После двух неудач на одном шаге
+   сделай шаг сам.
+7. В конце выполни `rm -f .neurogate-task.md` и коротко скажи, что сделано и что проверено.
+
+## Границы
+
+- Бесплатные сервисы могут использовать запросы для обучения. Не передавай им ключи, пароли,
+  содержимое `.env`, персональные данные и код, который нельзя показывать третьим лицам. Сомневаешься — спроси.
+- Сам пиши код, только если объяснить дольше, чем сделать.
+- `neurogate` не отвечает — выполни `neurogate doctor` и покажи результат.
+- Простой вопрос без правки файлов: `neurogate ask "<вопрос>"`.
+"""
+
+
+def _write_claude_skill() -> Path:
+    """Скилл вместо правила в ~/.claude/CLAUDE.md: код уходит к бесплатным сервисам только по
+    команде /free, а не в каждом проекте молча."""
+    path = Path.home() / ".claude" / "skills" / "free" / "SKILL.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(CLAUDE_SKILL, encoding="utf-8")
+    return path
+
+
+# По-английски: на Windows npm-шим claude.cmd пропускает аргументы через cmd.exe, и кириллица
+# в кодовой странице консоли ломается. Отчёт читает Claude, ему язык не важен.
 WORKER_PROMPT = (
-    "Ты исполнитель, задачу поручил другой агент; он не видит твою работу, только отчёт. "
-    "Сделай задачу целиком, правя файлы в текущей папке, и проверь результат (запусти тесты "
-    "или код, если можно). В конце — короткий отчёт до 15 строк: что изменил (файлы), как "
-    "проверил, что не получилось или требует решения."
+    "You are a worker. Another agent gave you this task and sees only your final report. "
+    "Finish the whole task by editing files in the current folder. Reply with the language of "
+    "the task. End with a report of up to 15 lines: changed files, what failed, what needs a decision."
 )
+WORKER_PROMPT_SHELL = WORKER_PROMPT + " Check the result: run the tests or the code if you can."
+WORKER_PROMPT_NO_SHELL = WORKER_PROMPT + " You cannot run commands: the other agent will check the result."
+
+# Исполнитель — чужая модель: ответ может оказаться каким угодно, а в `opencode run` никто не
+# подтверждает команды. Поэтому по умолчанию он только правит файлы проекта. deny важнее `ask`:
+# `opencode run --auto` и автоотказ зависят от версии, а явный запрет действует всегда.
+_SECRETS_DENY = {"*": "allow", "*.env": "deny", "*.env.*": "deny", "*.env.example": "allow",
+                 "*.pem": "deny", "*.key": "deny", "*id_rsa*": "deny", "*id_ed25519*": "deny"}
+WORKER_PERMISSION = {"bash": "deny", "webfetch": "deny", "external_directory": "deny",
+                     "read": _SECRETS_DENY}
+# --shell: команды разрешены, но не секреты и не отправка наружу. Это страховка от случайности,
+# а не песочница: `python -c` такой список обойдёт.
+WORKER_PERMISSION_SHELL = {
+    "webfetch": "deny", "external_directory": "deny", "read": _SECRETS_DENY,
+    "bash": {"*": "allow", "*.env*": "deny", "*id_rsa*": "deny", "*id_ed25519*": "deny",
+             "sudo *": "deny", "git push*": "deny", "curl *": "deny", "wget *": "deny",
+             "ssh *": "deny", "scp *": "deny", "rm -rf *": "deny"},
+}
+# Те же границы для Claude Code. Read и Edit специально не разрешаем явно: acceptEdits пускает
+# только в текущую папку, а `--allowedTools Read Write` открыл бы весь диск (проверено на 2.1.316).
+_CLAUDE_SECRETS_DENY = ["Read(./.env)", "Read(./.env.*)", "Read(./**/.env)", "Read(./**/.env.*)",
+                        "Read(./**/*.pem)", "Read(./**/*.key)"]
+_CLAUDE_SHELL_DENY = ["Bash(*.env*)", "Bash(sudo *)", "Bash(git push *)", "Bash(curl *)", "Bash(wget *)",
+                      "Bash(ssh *)", "Bash(scp *)", "Bash(rm -rf *)"]
 
 
 def _opencode_cli(prefer_app: bool = False) -> str | None:
@@ -894,8 +1033,7 @@ def _batch_safe(exe: str, prompt: str, task_file: Path) -> str:
     if os.name != "nt" or not exe.lower().endswith((".cmd", ".bat")):
         return prompt
     task_file.write_text(prompt, encoding="utf-8")
-    return (f"Прочитай файл {task_file.name} в текущей папке — там вся задача и правила, — и выполни её. "
-            "Сам этот файл не меняй.")
+    return f"Read the file {task_file.name} in the current folder: it holds the whole task. Do it. Do not change that file."
 
 
 def cmd_delegate(args: argparse.Namespace) -> int:
@@ -912,26 +1050,36 @@ def cmd_delegate(args: argparse.Namespace) -> int:
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("ANTHROPIC_", "CLAUDECODE", "CLAUDE_CODE_", "CODEX_"))}
     env["PWD"] = str(workdir)  # OpenCode берёт проект из PWD, а не из cwd процесса
-    # Windows: встроенный opencode-cli.exe, а не npm-шим opencode.cmd (см. _batch_safe)
-    opencode = None if args.worker == "claude" else _opencode_cli(prefer_app=os.name == "nt")
     claude = shutil.which("claude") or str(Path.home() / ".local/bin/claude")
+    has_claude = args.worker != "opencode" and Path(claude).exists()
+    # Windows: встроенный opencode-cli.exe, а не npm-шим opencode.cmd (см. _batch_safe)
+    opencode = None if has_claude or args.worker == "claude" else _opencode_cli(prefer_app=os.name == "nt")
     task_file = workdir / f".neurogate-task-{os.getpid()}.md"  # свой на каждый запуск
-    if opencode:
-        prompt = _batch_safe(opencode, f"{WORKER_PROMPT}\n\nЗадача:\n{task}", task_file)
-        cmd = [opencode, "run", "-m", f"neurogate/{args.model}", prompt]
-        who = "OpenCode"
-    elif Path(claude).exists():
+    worker_prompt = WORKER_PROMPT_SHELL if args.shell else WORKER_PROMPT_NO_SHELL
+    if has_claude:  # Claude Code уже стоит у всех, кому нужен этот режим: ставить ничего не надо
         env.update(_free_claude_env(base, token, args.model))
+        tools = ["Read", "Edit", "Write", "Glob", "Grep"] + (["Bash"] if args.shell else [])
+        denied = _CLAUDE_SECRETS_DENY + (_CLAUDE_SHELL_DENY if args.shell else [])
         cmd = [claude, "-p", _batch_safe(claude, task, task_file), "--permission-mode", "acceptEdits",
-               "--allowedTools", "Read", "Edit", "Write", "Glob", "Grep", "Bash",
-               "--append-system-prompt", WORKER_PROMPT, "--output-format", "text"]
+               "--tools", ",".join(tools), "--disallowedTools", *denied, "--strict-mcp-config",
+               "--append-system-prompt", worker_prompt, "--output-format", "text"]
+        if args.shell:
+            cmd += ["--allowedTools", "Bash"]
         who = "Claude Code"
+    elif opencode:
+        prompt = _batch_safe(opencode, f"{worker_prompt}\n\nTask:\n{task}", task_file)
+        cmd = [opencode, "run", "-m", f"neurogate/{args.model}", prompt]
+        env["OPENCODE_PERMISSION"] = json.dumps(WORKER_PERMISSION_SHELL if args.shell else WORKER_PERMISSION)
+        who = "OpenCode"
     else:
-        print("✗ Нет исполнителя: поставьте OpenCode (https://opencode.ai/download) "
-              "или Claude Code (curl -fsSL https://claude.ai/install.sh | bash)")
+        print("✗ Нет исполнителя: поставьте Claude Code (https://claude.ai/install.sh) "
+              "или OpenCode (https://opencode.ai/download)")
         return 2
     print(f"▶ Исполнитель: {who} на бесплатных моделях (neurogate/{args.model}), папка {workdir}",
           flush=True)
+    if args.shell:
+        print("⚠ --shell: бесплатная модель запускает команды на этом компьютере без подтверждения.",
+              flush=True)
     try:
         r = subprocess.run(cmd, cwd=workdir, env=env, check=False)
     finally:
@@ -976,7 +1124,7 @@ def cmd_ask(args: argparse.Namespace) -> int:
     return 0
 
 
-CONNECT_TOOLS = ["claude-code", "orchestrator", "cursor", "cline", "continue", "opencode", "codex"]
+CONNECT_TOOLS = ["claude-code", "claude-skill", "orchestrator", "cursor", "cline", "continue", "opencode", "codex"]
 
 
 def main(argv: list[str]) -> int:
@@ -1013,6 +1161,12 @@ def main(argv: list[str]) -> int:
     p = sub.add_parser("restart", help="перезапустить сервер (после новых ключей)")
     p.set_defaults(func=cmd_restart)
 
+    p = sub.add_parser("update", help="обновить код и список моделей; ключи остаются")
+    p.set_defaults(func=cmd_update)
+
+    p = sub.add_parser("refresh-config", help="новый список моделей в config.yaml (для установщика)")
+    p.set_defaults(func=cmd_refresh_config)
+
     sub.add_parser("serve", help="запустить сервер (то же, что `neurogate` без аргументов)")
 
     p = sub.add_parser("delegate", help="поручить задачу бесплатному агенту (сам правит файлы)")
@@ -1021,6 +1175,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--dir", default=".", help="папка проекта (по умолчанию текущая)")
     p.add_argument("--model", default="code", help="модель neurogate: code, code_fast, auto")
     p.add_argument("--worker", choices=["auto", "opencode", "claude"], default="auto")
+    p.add_argument("--shell", action="store_true",
+                   help="разрешить исполнителю запускать команды (без подтверждения; только в своём коде)")
     p.set_defaults(func=cmd_delegate)
 
     p = sub.add_parser("ask", help="быстрый вопрос бесплатной модели (без правки файлов)")

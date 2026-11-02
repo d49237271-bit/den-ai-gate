@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
@@ -51,6 +52,24 @@ from neurogate.schemas import (
 log = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).parent / "static"
+
+_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "testserver"}
+
+
+def _browser_allowed(host: str | None, origin: str | None) -> bool:
+    """Защита локального шлюза от чужих сайтов в браузере этого же компьютера.
+
+    Host — от DNS rebinding: домен злоумышленника указывает на 127.0.0.1, и его страница читает
+    ответы шлюза как свои. Origin — от CSRF: POST с чужого сайта тратит квоту, даже если ответ
+    ему недоступен. Origin приложений (vscode-webview://, app://) пропускаем: это не сайт.
+    """
+    if host and urlsplit(f"//{host}").hostname not in _LOCAL_HOSTS:
+        return False
+    if origin:
+        parts = urlsplit(origin)
+        if parts.scheme in ("http", "https") and parts.hostname not in _LOCAL_HOSTS:
+            return False
+    return True
 
 # Который клиент шлёт запрос — устанавливается middleware из заголовка
 # `X-Client-Name`, читается _log_call. Информационная метка (вариант B плана #15):
@@ -276,6 +295,15 @@ def create_app() -> FastAPI:
         # из middleware. Каждый request — свой asyncio Task, contextvar не
         # «протекает» между запросами.
         _current_client.set(_sanitize_client_name(request.headers.get("x-client-name")))
+        return await call_next(request)
+
+    # На сервере (NEUROGATE_HOST=0.0.0.0) работают токен и nginx; проверка нужна локальному шлюзу.
+    local_only = os.getenv("NEUROGATE_HOST", "127.0.0.1") in ("127.0.0.1", "localhost", "::1")
+
+    @app.middleware("http")
+    async def _browser_guard(request: Request, call_next):
+        if local_only and not _browser_allowed(request.headers.get("host"), request.headers.get("origin")):
+            return JSONResponse({"detail": "только с этого компьютера"}, status_code=403)
         return await call_next(request)
 
     def _authorize(authorization: str | None) -> None:
