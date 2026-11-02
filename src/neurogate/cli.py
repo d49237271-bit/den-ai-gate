@@ -415,7 +415,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     if os.name == "nt":
         # Не -File: PowerShell 5.1 прочитал бы файл без BOM как ANSI, и байт 0x94 из «—» стал бы кавычкой
         subprocess.Popen(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+            ["powershell", "-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
              "Get-Content -Raw -Encoding UTF8 .\\install.ps1 | Invoke-Expression"],
             creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0), close_fds=True,
         )
