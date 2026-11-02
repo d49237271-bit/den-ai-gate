@@ -302,11 +302,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     if alive and got:
         try:
-            r = httpx.post(f"{base}/v1/chat/completions", timeout=120,
-                           headers={"Authorization": f"Bearer {token}"},
-                           json={"model": "code_fast", "max_tokens": 20,
-                                 "messages": [{"role": "user", "content": "Ответь одним словом: ок"}]})
-            data = r.json()
+            # В быстром списке мало моделей: с одним ключом OpenRouter он бывает пуст, а `code` работает
+            for model in ("code_fast", "code"):
+                r = httpx.post(f"{base}/v1/chat/completions", timeout=120,
+                               headers={"Authorization": f"Bearer {token}"},
+                               json={"model": model, "max_tokens": 20,
+                                     "messages": [{"role": "user", "content": "Ответь одним словом: ок"}]})
+                data = r.json()
+                if r.status_code == 200:
+                    break
             if r.status_code == 200:
                 line(True, f"Модель ответила: {data.get('model')}")
             else:
