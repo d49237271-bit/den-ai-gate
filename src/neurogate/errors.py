@@ -15,12 +15,13 @@ class ErrorCategory(str, Enum):
     CONTEXT_EXCEEDED = "context_exceeded"  # 413, context/token length
     OUTPUT_LIMIT = "output_limit"      # requested max_tokens above provider's per-call output cap
     MODEL_DEAD = "model_dead"          # decommissioned / not found — config is stale
+    PROVIDER_DENIED = "provider_denied"  # region block, revoked key, closed model — this door only
     EMPTY = "empty"                    # provider returned no text and no tool calls
     NO_TOOL_SUPPORT = "no_tool_support"  # pre-flight: tools requested, provider has none
     NO_REASONING_SUPPORT = "no_reasoning_support"  # pre-flight: reasoning requested, provider has none
     NO_VISION_SUPPORT = "no_vision_support"  # pre-flight: image content present, provider is text-only
     RATE_CAPPED = "rate_capped"        # pre-flight: local RPM/RPD cap reached
-    OTHER = "other"                    # auth / bad request / unknown — non-retryable
+    OTHER = "other"                    # bad request / unknown — non-retryable
 
     @property
     def retryable(self) -> bool:
@@ -41,6 +42,7 @@ _RETRYABLE = frozenset({
     ErrorCategory.CONTEXT_EXCEEDED,
     ErrorCategory.OUTPUT_LIMIT,
     ErrorCategory.MODEL_DEAD,
+    ErrorCategory.PROVIDER_DENIED,
     ErrorCategory.EMPTY,
 })
 
@@ -54,10 +56,18 @@ def classify(exc: BaseException) -> ErrorCategory:
 
     msg = str(exc).lower()
 
+    # Отказ одного сервиса, а не плохой запрос: Gemini из России и Беларуси, отозванный ключ,
+    # снятая модель. Цепочка должна идти дальше, иначе один такой ключ глушит все остальные.
+    if any(t in msg for t in ("location is not supported", "not supported in your", "unsupported_country")):
+        return ErrorCategory.PROVIDER_DENIED
     if any(t in msg for t in ("429", "resource_exhausted", "quota", "rate limit")):
         return ErrorCategory.RATE_LIMIT
     if any(t in msg for t in ("decommissioned", "model_not_found", "model_decommissioned")):
         return ErrorCategory.MODEL_DEAD
+    if any(t in msg for t in ("404", "no endpoints found", "not found")):
+        return ErrorCategory.MODEL_DEAD
+    if any(t in msg for t in ("401", "403", "unauthorized", "forbidden", "invalid api key", "invalid_api_key")):
+        return ErrorCategory.PROVIDER_DENIED
     # Provider-side cap on output tokens (distinct from context-exceeded: input fits,
     # but the requested max_tokens is above the model's per-call output limit).
     # Groq qwen3-32b: "max_tokens must be less than or equal to 40960".

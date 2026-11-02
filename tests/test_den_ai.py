@@ -287,3 +287,19 @@ def test_guard_is_off_on_a_server(tmp_path, monkeypatch):
     monkeypatch.delenv("NEUROGATE_API_TOKEN", raising=False)
     c = TestClient(main.create_app())
     assert c.get("/health", headers={"Host": "gate.example.com"}).status_code == 200
+
+
+# ---------------------------------------------------------------- отказ одного сервиса
+
+@pytest.mark.parametrize("text", [
+    "400 FAILED_PRECONDITION. {'error': {'code': 400, 'message': 'User location is not supported for the API use.'}}",
+    "401 Unauthorized", "403 Forbidden", "404 No endpoints found for poolside/laguna-s-2.1:free",
+])
+def test_one_provider_refusal_does_not_stop_chain(text):
+    from neurogate.errors import classify
+    assert classify(RuntimeError(text)).retryable
+
+
+def test_bad_request_still_stops_chain():
+    from neurogate.errors import ErrorCategory, classify
+    assert classify(RuntimeError("400 invalid message format")) is ErrorCategory.OTHER
